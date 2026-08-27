@@ -35,7 +35,6 @@ export const achievementCommands = new SlashCommandBuilder()
     sub
       .setName('create')
       .setDescription('Create a new achievement')
-      .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild.toString())
       .addStringOption((o: any) => o.setName('title').setDescription('Achievement title').setRequired(true))
       .addStringOption((o: any) => o.setName('description').setDescription('Achievement description').setRequired(true))
       .addStringOption((o: any) =>
@@ -61,7 +60,6 @@ export const achievementCommands = new SlashCommandBuilder()
     sub
       .setName('grant')
       .setDescription('Grant an achievement to a user')
-      .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild.toString())
       .addUserOption((o: any) => o.setName('user').setDescription('Member').setRequired(true))
       .addStringOption((o: any) => o.setName('id').setDescription('Achievement ID').setRequired(true))
   )
