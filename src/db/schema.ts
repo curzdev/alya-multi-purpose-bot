@@ -1,4 +1,4 @@
-import { bigint, boolean, integer, jsonb, numeric, pgTable, primaryKey, text, timestamp, unique } from 'drizzle-orm/pg-core'
+import { bigint, boolean, integer, jsonb, numeric, pgTable, primaryKey, text, timestamp, unique, uuid } from 'drizzle-orm/pg-core'
 
 export const guilds = pgTable('alya_guilds', {
   guildId: text('guild_id').primaryKey(),
@@ -86,6 +86,29 @@ export const userAchievements = pgTable('alya_user_achievements', {
   progress: integer('progress').default(0).notNull(),
 }, (table) => ({ achievementKey: primaryKey({ columns: [table.userId, table.guildId, table.achievementId] }) }))
 
+export const events = pgTable('alya_events', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  guildId: text('guild_id').notNull(),
+  discordEventId: text('discord_event_id'),
+  title: text('title').notNull(),
+  description: text('description'),
+  startTime: timestamp('start_time', { withTimezone: true }).notNull(),
+  endTime: timestamp('end_time', { withTimezone: true }),
+  channelId: text('channel_id'),
+  createdBy: text('created_by').notNull(),
+  maxSlots: integer('max_slots'),
+  status: text('status').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+})
+
+export const eventRsvps = pgTable('alya_event_rsvps', {
+  eventId: uuid('event_id').notNull(),
+  userId: text('user_id').notNull(),
+  status: text('status').notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({ eventUser: primaryKey({ columns: [table.eventId, table.userId] }) }))
+
 export const auditLogs = pgTable('alya_audit_logs', {
   id: bigint('id', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
   guildId: text('guild_id').notNull(),
@@ -106,4 +129,7 @@ export type GuildLevelSettings = typeof guildLevelSettings.$inferSelect
 export type Achievement = typeof achievements.$inferSelect
 export type UserAchievement = typeof userAchievements.$inferSelect
 
-export const schema = { guilds, guildSettings, moderationCases, auditLogs, userLevels, guildLevelSettings, achievements, userAchievements }
+export type Event = typeof events.$inferSelect
+export type EventRsvp = typeof eventRsvps.$inferSelect
+
+export const schema = { guilds, guildSettings, moderationCases, auditLogs, userLevels, guildLevelSettings, achievements, userAchievements, events, eventRsvps }
