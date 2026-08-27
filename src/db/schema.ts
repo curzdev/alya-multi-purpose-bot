@@ -12,7 +12,7 @@ export const guildSettings = pgTable('alya_guild_settings', {
   guildId: text('guild_id').primaryKey(),
   logChannelId: text('log_channel_id'),
   modRoleId: text('mod_role_id'),
-  commandConfig: jsonb('command_config').$type<Record<string, boolean>>().default({}).notNull(),
+  commandConfig: jsonb('command_config').$type<Record<string, unknown>>().default({}).notNull(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 })
 
