@@ -29,8 +29,17 @@ export function canModerate(actorId: string, targetId: string, guildOwnerId?: st
 
 export function parseDuration(value?: string) {
   if (!value) return undefined
-  const match = /^(\d+)(s|m|h|d|w)$/i.exec(value)
-  if (!match) throw new Error('Duration must look like 30m, 2h, or 7d')
-  const units = { s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000, w: 604_800_000 }
-  return new Date(Date.now() + Number(match[1]) * units[match[2].toLowerCase() as keyof typeof units])
+  const match = /^(\d+)\s*(seconds?|secs?|s|minutes?|mins?|m|hours?|hrs?|h|days?|d|weeks?|w)$/i.exec(value.trim())
+  if (!match) throw new Error('Duration must look like 30 minutes, 2 hours, or 7 days')
+
+  const amount = Number(match[1])
+  const unit = match[2].toLowerCase()
+  const milliseconds = unit.startsWith('s') ? 1_000
+    : unit.startsWith('m') ? 60_000
+    : unit.startsWith('h') ? 3_600_000
+    : unit.startsWith('d') ? 86_400_000
+    : 604_800_000
+  const duration = amount * milliseconds
+  if (amount < 1 || duration > 28 * 86_400_000) throw new Error('Timeouts must be between 1 second and 28 days')
+  return new Date(Date.now() + duration)
 }
