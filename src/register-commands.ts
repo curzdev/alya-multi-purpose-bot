@@ -18,7 +18,7 @@ async function registerCommands() {
     ? Routes.applicationGuildCommands(applicationId, config.DISCORD_TEST_GUILD_ID)
     : Routes.applicationCommands(applicationId)
 
-  const commands = [...moderationCommands, automodCommands, protectionCommands, levelingCommands, rankBackgroundCommands, leaderboardCommands, levelConfigCommands, ...reminderCommands]
+  const commands = [...moderationCommands, automodCommands, protectionCommands, levelingCommands, rankBackgroundCommands, leaderboardCommands, levelConfigCommands, ...reminderCommands, achievementCommands]
   await rest.put(route, { body: commands.map(command => command.toJSON()) })
   console.log(`[alya] registered ${commands.length} commands ${config.DISCORD_TEST_GUILD_ID ? 'to test guild' : 'globally'} for application ${applicationId}`)
 }
