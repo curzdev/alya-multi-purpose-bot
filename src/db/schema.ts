@@ -50,6 +50,21 @@ export const guildLevelSettings = pgTable('alya_guild_level_settings', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 })
 
+export const reminders = pgTable('alya_reminders', {
+  id: text('id').primaryKey(),
+  userId: text('user_id').notNull(),
+  guildId: text('guild_id'),
+  channelId: text('channel_id').notNull(),
+  message: text('message').notNull(),
+  remindAt: timestamp('remind_at', { withTimezone: true }).notNull(),
+  repeatRule: text('repeat_rule'),
+  timezone: text('timezone').default('UTC').notNull(),
+  delivery: text('delivery').default('channel').notNull(),
+  pausedAt: timestamp('paused_at', { withTimezone: true }),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+})
+
 export const auditLogs = pgTable('alya_audit_logs', {
   id: bigint('id', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
   guildId: text('guild_id').notNull(),

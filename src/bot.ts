@@ -4,10 +4,15 @@ import { handleModeration, moderationCommands } from './moderation/commands'
 import { automodCommands, handleAutoMod, handleAutoModMessage, registerGuild, trackGuildJoin } from './automod'
 import { handleProtection, handleProtectionBotAdd, handleProtectionMemberJoin, handleProtectionMessage, protectionCommands, registerProtectionGuild } from './protection'
 import { handleLeveling, handleLevelMessage, leaderboardCommands, levelConfigCommands, levelingCommands, rankBackgroundCommands } from './leveling'
+import { deliverDueReminders, handleReminder, reminderCommands } from './reminders'
 
 export const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildMessages] })
 
-client.once(Events.ClientReady, ready => console.log(`[alya] online as ${ready.user.tag}`))
+client.once(Events.ClientReady, ready => {
+  console.log(`[alya] online as ${ready.user.tag}`)
+  void deliverDueReminders(client)
+  setInterval(() => void deliverDueReminders(client), 30_000)
+})
 client.on(Events.GuildCreate, guild => { void registerGuild(guild.id, guild.name, guild.ownerId); void registerProtectionGuild(guild.id) })
 client.on(Events.GuildMemberAdd, member => {
   if (trackGuildJoin(member.guild.id) >= 10) console.warn(`[alya] raid threshold reached in ${member.guild.id}`)
@@ -19,6 +24,10 @@ client.on(Events.InteractionCreate, async interaction => {
   if (!interaction.isChatInputCommand()) return
   if ([levelingCommands.name, rankBackgroundCommands.name, leaderboardCommands.name, levelConfigCommands.name].includes(interaction.commandName)) {
     try { await handleLeveling(interaction) } catch (error) { console.error('[alya] leveling command failed', error); if (interaction.replied || interaction.deferred) await interaction.editReply({ content: 'Alya could not update leveling.' }); else await interaction.reply({ content: 'Alya could not update leveling.', ephemeral: true }) }
+    return
+  }
+  if (reminderCommands.some(command => command.name === interaction.commandName)) {
+    try { await handleReminder(interaction) } catch (error) { console.error('[alya] reminder command failed', error); const message = { content: error instanceof Error ? error.message : 'Alya could not manage that reminder.', ephemeral: true }; if (interaction.replied || interaction.deferred) await interaction.editReply(message); else await interaction.reply(message) }
     return
   }
   if (interaction.commandName === protectionCommands.name) {
