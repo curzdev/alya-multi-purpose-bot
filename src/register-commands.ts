@@ -2,6 +2,7 @@ import { REST, Routes } from 'discord.js'
 import { config } from './config'
 import { moderationCommands } from './moderation/commands'
 import { automodCommands } from './automod'
+import { protectionCommands } from './protection'
 
 const rest = new REST({ version: '10' }).setToken(config.DISCORD_TOKEN)
 
@@ -14,7 +15,7 @@ async function registerCommands() {
     ? Routes.applicationGuildCommands(applicationId, config.DISCORD_TEST_GUILD_ID)
     : Routes.applicationCommands(applicationId)
 
-  const commands = [...moderationCommands, automodCommands]
+  const commands = [...moderationCommands, automodCommands, protectionCommands]
   await rest.put(route, { body: commands.map(command => command.toJSON()) })
   console.log(`[alya] registered ${commands.length} commands ${config.DISCORD_TEST_GUILD_ID ? 'to test guild' : 'globally'} for application ${applicationId}`)
 }
