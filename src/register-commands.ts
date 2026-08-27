@@ -2,9 +2,22 @@ import { REST, Routes } from 'discord.js'
 import { config } from './config'
 import { moderationCommands } from './moderation/commands'
 
-if (!config.DISCORD_APPLICATION_ID) throw new Error('DISCORD_APPLICATION_ID is required for command registration')
 const rest = new REST({ version: '10' }).setToken(config.DISCORD_TOKEN)
-const route = config.DISCORD_TEST_GUILD_ID ? Routes.applicationGuildCommands(config.DISCORD_APPLICATION_ID, config.DISCORD_TEST_GUILD_ID) : Routes.applicationCommands(config.DISCORD_APPLICATION_ID)
-rest.put(route, { body: moderationCommands.map(command => command.toJSON()) }).then(() => {
-  console.log(`[alya] registered ${moderationCommands.length} commands ${config.DISCORD_TEST_GUILD_ID ? 'to test guild' : 'globally'}`)
-}).catch(error => { console.error('[alya] command registration failed', error); process.exitCode = 1 })
+
+async function registerCommands() {
+  // A bot's application ID is its user ID. Resolve it from the token so a
+  // separate DISCORD_APPLICATION_ID variable is not required.
+  const botUser = await rest.get(Routes.user()) as { id: string }
+  const applicationId = config.DISCORD_APPLICATION_ID || botUser.id
+  const route = config.DISCORD_TEST_GUILD_ID
+    ? Routes.applicationGuildCommands(applicationId, config.DISCORD_TEST_GUILD_ID)
+    : Routes.applicationCommands(applicationId)
+
+  await rest.put(route, { body: moderationCommands.map(command => command.toJSON()) })
+  console.log(`[alya] registered ${moderationCommands.length} commands ${config.DISCORD_TEST_GUILD_ID ? 'to test guild' : 'globally'} for application ${applicationId}`)
+}
+
+registerCommands().catch(error => {
+  console.error('[alya] command registration failed', error)
+  process.exitCode = 1
+})
