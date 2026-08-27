@@ -65,6 +65,27 @@ export const reminders = pgTable('alya_reminders', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 })
 
+export const achievements = pgTable('alya_achievements', {
+  id: text('id').primaryKey(),
+  guildId: text('guild_id'),
+  title: text('title').notNull(),
+  description: text('description').notNull(),
+  iconUrl: text('icon_url'),
+  triggerType: text('trigger_type').notNull(),
+  triggerTargetValue: integer('trigger_target_value').default(1).notNull(),
+  rewardRoleId: text('reward_role_id'),
+  rewardXp: integer('reward_xp').default(0).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({ achievementUnique: unique().on(table.guildId, table.title) }))
+
+export const userAchievements = pgTable('alya_user_achievements', {
+  userId: text('user_id').notNull(),
+  guildId: text('guild_id').notNull(),
+  achievementId: text('achievement_id').notNull(),
+  unlockedAt: timestamp('unlocked_at', { withTimezone: true }).defaultNow().notNull(),
+  progress: integer('progress').default(0).notNull(),
+}, (table) => ({ achievementKey: primaryKey({ columns: [table.userId, table.guildId, table.achievementId] }) }))
+
 export const auditLogs = pgTable('alya_audit_logs', {
   id: bigint('id', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
   guildId: text('guild_id').notNull(),
@@ -82,4 +103,7 @@ export type GuildSettings = typeof guildSettings.$inferSelect
 export type UserLevel = typeof userLevels.$inferSelect
 export type GuildLevelSettings = typeof guildLevelSettings.$inferSelect
 
-export const schema = { guilds, guildSettings, moderationCases, auditLogs, userLevels, guildLevelSettings }
+export type Achievement = typeof achievements.$inferSelect
+export type UserAchievement = typeof userAchievements.$inferSelect
+
+export const schema = { guilds, guildSettings, moderationCases, auditLogs, userLevels, guildLevelSettings, achievements, userAchievements }

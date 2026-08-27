@@ -5,6 +5,7 @@ import { automodCommands, handleAutoMod, handleAutoModMessage, registerGuild, tr
 import { handleProtection, handleProtectionBotAdd, handleProtectionMemberJoin, handleProtectionMessage, protectionCommands, registerProtectionGuild } from './protection'
 import { handleLeveling, handleLevelMessage, leaderboardCommands, levelConfigCommands, levelingCommands, rankBackgroundCommands } from './leveling'
 import { deliverDueReminders, handleReminder, reminderCommands } from './reminders'
+import { achievementCommands, handleAchievements, trackAchievementTrigger } from './achievements'
 
 export const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildMessages] })
 
@@ -24,6 +25,10 @@ client.on(Events.InteractionCreate, async interaction => {
   if (!interaction.isChatInputCommand()) return
   if ([levelingCommands.name, rankBackgroundCommands.name, leaderboardCommands.name, levelConfigCommands.name].includes(interaction.commandName)) {
     try { await handleLeveling(interaction) } catch (error) { console.error('[alya] leveling command failed', error); if (interaction.replied || interaction.deferred) await interaction.editReply({ content: 'Alya could not update leveling.' }); else await interaction.reply({ content: 'Alya could not update leveling.', ephemeral: true }) }
+    return
+  }
+  if (interaction.commandName === achievementCommands.name) {
+    try { await handleAchievements(interaction) } catch (error) { console.error('[alya] achievement command failed', error); if (interaction.replied || interaction.deferred) await interaction.editReply({ content: 'Alya could not manage achievements.' }); else await interaction.reply({ content: 'Alya could not manage achievements.', ephemeral: true }) }
     return
   }
   if (reminderCommands.some(command => command.name === interaction.commandName)) {

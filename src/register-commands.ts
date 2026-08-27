@@ -5,6 +5,7 @@ import { automodCommands } from './automod'
 import { protectionCommands } from './protection'
 import { leaderboardCommands, levelConfigCommands, levelingCommands, rankBackgroundCommands } from './leveling'
 import { reminderCommands } from './reminders'
+import { achievementCommands } from './achievements'
 
 const rest = new REST({ version: '10' }).setToken(config.DISCORD_TOKEN)
 
