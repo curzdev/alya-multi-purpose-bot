@@ -21,19 +21,20 @@ type PanelEmbed = { title?: string; description?: string; color?: number; image?
 type TicketInteraction = any
 
 const sub = (name: string, description: string, options: any[] = []) => ({ name, description, type: 1, options })
+const group = (name: string, description: string, options: any[] = []) => ({ name, description, type: 2, options })
 const stringOption = (name: string, description: string, required = false) => ({ name, description, type: 3, required })
 const channelOption = { name: 'channel', description: 'Text channel for the panel', type: 7, required: true, channel_types: [0] }
 const userOption = { name: 'user', description: 'Member to update', type: 6, required: true }
 
 const ticketCommand = {
   name: 'ticket', description: 'Create and manage private support tickets', options: [
-    sub('panel', 'Create and customize ticket panels', [
+    group('panel', 'Create and customize ticket panels', [
       sub('setup', 'Deploy a new ticket panel', [channelOption]),
       sub('embed', 'Customize a ticket panel embed', [stringOption('message_id', 'Panel message ID', true), stringOption('title', 'Embed title'), stringOption('description', 'Embed description'), stringOption('color', 'Hex color'), stringOption('image_url', 'Banner image URL'), stringOption('thumbnail', 'Thumbnail URL')]),
       sub('style', 'Choose buttons or dropdown', [stringOption('message_id', 'Panel message ID', true), { name: 'style', description: 'Panel interaction style', type: 3, required: true, choices: [{ name: 'Buttons', value: 'buttons' }, { name: 'Dropdown', value: 'dropdown' }] }]),
     ]),
-    sub('category', 'Manage ticket departments', [sub('add', 'Add a category to a panel', [stringOption('panel_id', 'Panel message ID', true), stringOption('name', 'Category name', true), stringOption('emoji', 'Category emoji', true), stringOption('color', 'Button color'), { name: 'staff_role', description: 'Support role', type: 8, required: true }])]),
-    sub('form', 'Configure category modal questions', [sub('set', 'Set popup questions', [stringOption('category', 'Category ID', true), stringOption('question_1', 'First question', true), stringOption('question_2', 'Second question'), stringOption('question_3', 'Third question')])]),
+    group('category', 'Manage ticket departments', [sub('add', 'Add a category to a panel', [stringOption('panel_id', 'Panel message ID', true), stringOption('name', 'Category name', true), stringOption('emoji', 'Category emoji', true), stringOption('color', 'Button color'), { name: 'staff_role', description: 'Support role', type: 8, required: true }])]),
+    group('form', 'Configure category modal questions', [sub('set', 'Set popup questions', [stringOption('category', 'Category ID', true), stringOption('question_1', 'First question', true), stringOption('question_2', 'Second question'), stringOption('question_3', 'Third question')])]),
     sub('create', 'Open a ticket manually', [stringOption('reason', 'Reason for opening')]),
     sub('close', 'Close the current ticket', [stringOption('reason', 'Reason for closing')]),
     sub('claim', 'Claim the current ticket'),
