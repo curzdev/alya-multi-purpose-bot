@@ -95,8 +95,21 @@ export async function handleTickets(interaction: ChatInputCommandInteraction) {
     else await interaction.channel.permissionOverwrites.delete(user.id)
     await interaction.reply({ content: `${subcommand === 'add' ? 'Added' : 'Removed'} <@${user.id}> ${subcommand === 'add' ? 'to' : 'from'} this ticket.` }); return
   }
-  if (subcommand === 'transcript') { if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels)) throw new Error('Manage Channels permission required.'); const html = await transcript(interaction.channel); await interaction.reply({ content: 'Transcript generated.', files: [{ attachment: Buffer.from(html), name: `${interaction.channel.name}.html` }] }); return }
-  if (subcommand === 'close') { if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels) && ticket.userId !== interaction.user.id) throw new Error('Only the ticket owner or staff can close this ticket.'); await db.update(tickets).set({ status: 'closed', closedAt: new Date() }).where(eq(tickets.ticketId, ticket.ticketId)); await publishDashboardEvent({ type: 'ticket.closed', guildId: interaction.guild.id, actorUserId: interaction.user.id, payload: { ticketId: ticket.ticketId, reason: interaction.options.getString('reason') || null } }); await interaction.reply({ content: 'Ticket closed. This channel will be deleted shortly.' }); setTimeout(() => interaction.channel?.delete().catch(() => undefined), 3000) }
+  if (subcommand === 'transcript') {
+    if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels)) throw new Error('Manage Channels permission required.')
+    const html = await transcript(interaction.channel)
+    await interaction.reply({ content: 'Transcript generated.', files: [{ attachment: Buffer.from(html), name: `${interaction.channel.name}.html` }] })
+    await publishDashboardEvent({ type: 'ticket.transcript', guildId: interaction.guild.id, actorUserId: interaction.user.id, payload: { ticketId: ticket.ticketId, channelId: interaction.channel.id, messageCount: (await interaction.channel.messages.fetch({ limit: 100 })).size } })
+    return
+  }
+  if (subcommand === 'close') {
+    if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels) && ticket.userId !== interaction.user.id) throw new Error('Only the ticket owner or staff can close this ticket.')
+    const html = await transcript(interaction.channel)
+    await db.update(tickets).set({ status: 'closed', closedAt: new Date() }).where(eq(tickets.ticketId, ticket.ticketId))
+    await publishDashboardEvent({ type: 'ticket.closed', guildId: interaction.guild.id, actorUserId: interaction.user.id, payload: { ticketId: ticket.ticketId, channelId: interaction.channel.id, reason: interaction.options.getString('reason') || null, transcriptHtml: html } })
+    await interaction.reply({ content: 'Ticket closed. The transcript is attached before this channel is deleted.', files: [{ attachment: Buffer.from(html), name: `${interaction.channel.name}-transcript.html` }] })
+    setTimeout(() => interaction.channel?.delete().catch(() => undefined), 5000)
+  }
 }
 
 export async function handleTicketInteraction(interaction: any) {
