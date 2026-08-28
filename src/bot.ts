@@ -7,6 +7,7 @@ import { handleLeveling, handleLevelMessage, leaderboardCommands, levelConfigCom
 import { deliverDueReminders, handleReminder, reminderCommands } from './reminders'
 import { achievementCommands, handleAchievements, trackAchievementTrigger } from './achievements'
 import { handleInvites, inviteCommands, inviteEventHandlers } from './invites'
+import { handleTicketInteraction, handleTickets, ticketCommands, isTicketCommand } from './tickets'
 
 export const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildMessages, GatewayIntentBits.GuildInvites] })
 
@@ -28,7 +29,14 @@ client.on(Events.GuildMemberAdd, member => {
 })
 client.on(Events.MessageCreate, message => { void handleAutoModMessage(message); void handleProtectionMessage(message); void handleLevelMessage(message as any) })
 client.on(Events.InteractionCreate, async interaction => {
-  if (!interaction.isChatInputCommand()) return
+  if (!interaction.isChatInputCommand()) {
+    try { await handleTicketInteraction(interaction) } catch (error) { console.error('[alya] ticket interaction failed', error) }
+    return
+  }
+  if (isTicketCommand(interaction.commandName)) {
+    try { await handleTickets(interaction) } catch (error) { console.error('[alya] ticket command failed', error); const message = { content: error instanceof Error ? error.message : 'Alya could not manage that ticket.', ephemeral: true }; if (interaction.replied || interaction.deferred) await interaction.editReply(message); else await interaction.reply(message) }
+    return
+  }
   if (inviteCommands.some(command => command.name === interaction.commandName)) {
     try { await handleInvites(interaction) } catch (error) { console.error('[alya] invite command failed', error); if (interaction.replied || interaction.deferred) await interaction.editReply({ content: 'Alya could not manage invites.' }); else await interaction.reply({ content: 'Alya could not manage invites.', ephemeral: true }) }
     return

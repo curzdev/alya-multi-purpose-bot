@@ -135,6 +135,31 @@ export const inviteRewards = pgTable('alya_invite_rewards', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => ({ rewardKey: primaryKey({ columns: [table.guildId, table.invitesNeeded] }) }))
 
+export const ticketCategories = pgTable('alya_ticket_categories', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  guildId: text('guild_id').notNull(),
+  name: text('name').notNull(),
+  description: text('description').default('').notNull(),
+  emoji: text('emoji'),
+  supportRoleId: text('support_role_id'),
+  parentCategoryId: uuid('parent_category_id'),
+  namingFormat: text('naming_format').default('ticket-{number}').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({ categoryUnique: unique().on(table.guildId, table.name) }))
+
+export const tickets = pgTable('alya_tickets', {
+  ticketId: uuid('ticket_id').primaryKey().defaultRandom(),
+  guildId: text('guild_id').notNull(),
+  channelId: text('channel_id').notNull().unique(),
+  userId: text('user_id').notNull(),
+  categoryId: uuid('category_id'),
+  status: text('status').default('open').notNull(),
+  claimedBy: text('claimed_by'),
+  transcriptUrl: text('transcript_url'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  closedAt: timestamp('closed_at', { withTimezone: true }),
+})
+
 export const auditLogs = pgTable('alya_audit_logs', {
   id: bigint('id', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
   guildId: text('guild_id').notNull(),
@@ -158,4 +183,4 @@ export type UserAchievement = typeof userAchievements.$inferSelect
 export type Event = typeof events.$inferSelect
 export type EventRsvp = typeof eventRsvps.$inferSelect
 
-export const schema = { guilds, guildSettings, moderationCases, auditLogs, userLevels, guildLevelSettings, achievements, userAchievements, events, eventRsvps, userInvites, inviteCodes, inviteRewards }
+export const schema = { guilds, guildSettings, moderationCases, auditLogs, userLevels, guildLevelSettings, achievements, userAchievements, events, eventRsvps, userInvites, inviteCodes, inviteRewards, ticketCategories, tickets }
