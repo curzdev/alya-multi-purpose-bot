@@ -10,7 +10,9 @@ import { handleInvites, inviteCommands, inviteEventHandlers } from './invites'
 import { handleTicketInteraction, handleTickets, ticketCommands, isTicketCommand } from './tickets'
 import { handleReactionRoleCommand, handleReactionRoleInteraction, reactionRoleCommands } from './reaction-roles'
 
-export const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildMessages, GatewayIntentBits.GuildInvites] })
+export const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildMessages, GatewayIntentBits.GuildInvites, GatewayIntentBits.GuildVoiceStates] })
+
+const voiceStartedAt = new Map<string, number>()
 
 client.once(Events.ClientReady, ready => {
   console.log(`[alya] online as ${ready.user.tag}`)
@@ -28,7 +30,34 @@ client.on(Events.GuildMemberAdd, member => {
   void handleProtectionMemberJoin(member)
   if (member.user.bot) void handleProtectionBotAdd(member)
 })
-client.on(Events.MessageCreate, message => { void handleAutoModMessage(message); void handleProtectionMessage(message); void handleLevelMessage(message as any) })
+client.on(Events.MessageCreate, message => {
+  void handleAutoModMessage(message)
+  void handleProtectionMessage(message)
+  void (async () => {
+    const levelUp = await handleLevelMessage(message as any)
+    if (message.guildId && message.member && !message.author.bot) {
+      const unlocked = await trackAchievementTrigger(message.author.id, message.guildId, 'messages', 1, message.member)
+      if (unlocked.length) await message.channel.send(`Achievement unlocked for <@${message.author.id}>: ${unlocked.map(title => `**${title}**`).join(', ')}`).catch(() => undefined)
+      if (levelUp) {
+        await message.channel.send(`<@${message.author.id}> reached level **${levelUp.level}**!`).catch(() => undefined)
+        const levelAchievements = await trackAchievementTrigger(message.author.id, message.guildId, 'level', levelUp.level, message.member)
+        if (levelAchievements.length) await message.channel.send(`Achievement unlocked for <@${message.author.id}>: ${levelAchievements.map(title => `**${title}**`).join(', ')}`).catch(() => undefined)
+      }
+    }
+  })().catch(error => console.error('[alya] achievement message tracking failed', error))
+})
+client.on(Events.VoiceStateUpdate, (oldState, newState) => {
+  const key = `${newState.guild.id}:${newState.id}`
+  if (!oldState.channelId && newState.channelId) voiceStartedAt.set(key, Date.now())
+  if (oldState.channelId && !newState.channelId) {
+    const started = voiceStartedAt.get(key)
+    voiceStartedAt.delete(key)
+    if (started && newState.member && !newState.member.user.bot) {
+      const hours = (Date.now() - started) / 3_600_000
+      void trackAchievementTrigger(newState.id, newState.guild.id, 'voice_hours', hours, newState.member).catch(error => console.error('[alya] achievement voice tracking failed', error))
+    }
+  }
+})
 client.on(Events.InteractionCreate, async interaction => {
   if (!interaction.isChatInputCommand()) {
     try {

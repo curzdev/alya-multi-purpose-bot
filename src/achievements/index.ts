@@ -73,7 +73,8 @@ async function getAchievementsByTrigger(guildId: string, trigger: AchievementTri
 
 async function checkAndUnlock(userId: string, guildId: string, trigger: AchievementTrigger, value: number, member: GuildMember) {
   const relevant = await getAchievementsByTrigger(guildId, trigger)
-  if (!relevant.length) return
+  if (!relevant.length) return []
+  const unlockedTitles: string[] = []
 
   for (const ach of relevant) {
     const existing = await db
@@ -84,9 +85,10 @@ async function checkAndUnlock(userId: string, guildId: string, trigger: Achievem
       )
       .limit(1)
 
-    if (existing.length > 0) continue
+    const current = existing[0]
+    if (current?.unlockedAt) continue
 
-    const newProgress = (existing[0]?.progress ?? 0) + value
+    const newProgress = (current?.progress ?? 0) + value
     if (newProgress >= (ach.triggerTargetValue || 1)) {
       await db
         .insert(userAchievements)
@@ -108,6 +110,7 @@ async function checkAndUnlock(userId: string, guildId: string, trigger: Achievem
         payload: { achievementId: ach.id, title: ach.title },
       })
 
+      unlockedTitles.push(ach.title)
       await publishDashboardEvent({
         type: 'achievement.unlocked',
         guildId,
@@ -125,10 +128,11 @@ async function checkAndUnlock(userId: string, guildId: string, trigger: Achievem
         })
     }
   }
+  return unlockedTitles
 }
 
 export async function trackAchievementTrigger(userId: string, guildId: string, trigger: AchievementTrigger, value: number, member: GuildMember) {
-  await checkAndUnlock(userId, guildId, trigger, value, member)
+  return checkAndUnlock(userId, guildId, trigger, value, member)
 }
 
 export async function handleAchievements(interaction: ChatInputCommandInteraction) {
