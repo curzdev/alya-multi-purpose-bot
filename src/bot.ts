@@ -6,16 +6,22 @@ import { handleProtection, handleProtectionBotAdd, handleProtectionMemberJoin, h
 import { handleLeveling, handleLevelMessage, leaderboardCommands, levelConfigCommands, levelingCommands, rankBackgroundCommands } from './leveling'
 import { deliverDueReminders, handleReminder, reminderCommands } from './reminders'
 import { achievementCommands, handleAchievements, trackAchievementTrigger } from './achievements'
+import { handleInvites, inviteCommands, inviteEventHandlers } from './invites'
 
-export const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildMessages] })
+export const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildMessages, GatewayIntentBits.GuildInvites] })
 
 client.once(Events.ClientReady, ready => {
   console.log(`[alya] online as ${ready.user.tag}`)
+  for (const guild of ready.guilds.cache.values()) void inviteEventHandlers.registerInviteGuild(guild)
   void deliverDueReminders(client)
   setInterval(() => void deliverDueReminders(client), 30_000)
 })
-client.on(Events.GuildCreate, guild => { void registerGuild(guild.id, guild.name, guild.ownerId); void registerProtectionGuild(guild.id) })
+client.on(Events.GuildCreate, guild => { void registerGuild(guild.id, guild.name, guild.ownerId); void registerProtectionGuild(guild.id); void inviteEventHandlers.registerInviteGuild(guild) })
+client.on(Events.InviteCreate, invite => { void inviteEventHandlers.handleInviteCreate(invite) })
+client.on(Events.InviteDelete, invite => { void inviteEventHandlers.handleInviteDelete(invite) })
+client.on(Events.GuildMemberRemove, member => { void inviteEventHandlers.handleMemberLeave(member) })
 client.on(Events.GuildMemberAdd, member => {
+  void inviteEventHandlers.handleMemberJoin(member)
   if (trackGuildJoin(member.guild.id) >= 10) console.warn(`[alya] raid threshold reached in ${member.guild.id}`)
   void handleProtectionMemberJoin(member)
   if (member.user.bot) void handleProtectionBotAdd(member)
@@ -23,6 +29,10 @@ client.on(Events.GuildMemberAdd, member => {
 client.on(Events.MessageCreate, message => { void handleAutoModMessage(message); void handleProtectionMessage(message); void handleLevelMessage(message as any) })
 client.on(Events.InteractionCreate, async interaction => {
   if (!interaction.isChatInputCommand()) return
+  if (inviteCommands.some(command => command.name === interaction.commandName)) {
+    try { await handleInvites(interaction) } catch (error) { console.error('[alya] invite command failed', error); if (interaction.replied || interaction.deferred) await interaction.editReply({ content: 'Alya could not manage invites.' }); else await interaction.reply({ content: 'Alya could not manage invites.', ephemeral: true }) }
+    return
+  }
   if ([levelingCommands.name, rankBackgroundCommands.name, leaderboardCommands.name, levelConfigCommands.name].includes(interaction.commandName)) {
     try { await handleLeveling(interaction) } catch (error) { console.error('[alya] leveling command failed', error); if (interaction.replied || interaction.deferred) await interaction.editReply({ content: 'Alya could not update leveling.' }); else await interaction.reply({ content: 'Alya could not update leveling.', ephemeral: true }) }
     return

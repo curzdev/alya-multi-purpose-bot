@@ -109,6 +109,32 @@ export const eventRsvps = pgTable('alya_event_rsvps', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => ({ eventUser: primaryKey({ columns: [table.eventId, table.userId] }) }))
 
+export const userInvites = pgTable('alya_user_invites', {
+  guildId: text('guild_id').notNull(),
+  userId: text('user_id').notNull(),
+  regular: integer('regular').default(0).notNull(),
+  leftCount: integer('left_count').default(0).notNull(),
+  fake: integer('fake').default(0).notNull(),
+  bonus: integer('bonus').default(0).notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({ userGuild: primaryKey({ columns: [table.guildId, table.userId] }) }))
+
+export const inviteCodes = pgTable('alya_invite_codes', {
+  code: text('code').primaryKey(),
+  guildId: text('guild_id').notNull(),
+  inviterId: text('inviter_id').notNull(),
+  uses: integer('uses').default(0).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+})
+
+export const inviteRewards = pgTable('alya_invite_rewards', {
+  guildId: text('guild_id').notNull(),
+  invitesNeeded: integer('invites_needed').notNull(),
+  roleId: text('role_id').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({ rewardKey: primaryKey({ columns: [table.guildId, table.invitesNeeded] }) }))
+
 export const auditLogs = pgTable('alya_audit_logs', {
   id: bigint('id', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
   guildId: text('guild_id').notNull(),
@@ -132,4 +158,4 @@ export type UserAchievement = typeof userAchievements.$inferSelect
 export type Event = typeof events.$inferSelect
 export type EventRsvp = typeof eventRsvps.$inferSelect
 
-export const schema = { guilds, guildSettings, moderationCases, auditLogs, userLevels, guildLevelSettings, achievements, userAchievements, events, eventRsvps }
+export const schema = { guilds, guildSettings, moderationCases, auditLogs, userLevels, guildLevelSettings, achievements, userAchievements, events, eventRsvps, userInvites, inviteCodes, inviteRewards }
