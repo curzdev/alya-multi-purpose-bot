@@ -179,6 +179,27 @@ export const reactionRoles = pgTable('alya_reaction_roles', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => ({ roleKey: primaryKey({ columns: [table.messageId, table.roleId] }) }))
 
+export const logSettings = pgTable('alya_log_settings', {
+  guildId: text('guild_id').primaryKey(),
+  auditChannelId: text('audit_channel_id'),
+  errorChannelId: text('error_channel_id'),
+  enabledEvents: jsonb('enabled_events').$type<string[]>().default([]).notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+})
+
+export const systemLogs = pgTable('alya_system_logs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  guildId: text('guild_id').notNull(),
+  type: text('type').notNull(),
+  eventName: text('event_name').notNull(),
+  message: text('message').notNull(),
+  stackTrace: text('stack_trace'),
+  actorUserId: text('actor_user_id'),
+  targetUserId: text('target_user_id'),
+  payload: jsonb('payload').$type<Record<string, unknown>>().default({}).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+})
+
 export const auditLogs = pgTable('alya_audit_logs', {
   id: bigint('id', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
   guildId: text('guild_id').notNull(),
@@ -202,4 +223,4 @@ export type UserAchievement = typeof userAchievements.$inferSelect
 export type Event = typeof events.$inferSelect
 export type EventRsvp = typeof eventRsvps.$inferSelect
 
-export const schema = { guilds, guildSettings, moderationCases, auditLogs, userLevels, guildLevelSettings, achievements, userAchievements, events, eventRsvps, userInvites, inviteCodes, inviteRewards, ticketCategories, tickets, reactionPanels, reactionRoles }
+export const schema = { guilds, guildSettings, moderationCases, auditLogs, logSettings, systemLogs, userLevels, guildLevelSettings, achievements, userAchievements, events, eventRsvps, userInvites, inviteCodes, inviteRewards, ticketCategories, tickets, reactionPanels, reactionRoles }

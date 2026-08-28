@@ -9,6 +9,7 @@ import { achievementCommands, handleAchievements, trackAchievementTrigger } from
 import { handleInvites, inviteCommands, inviteEventHandlers } from './invites'
 import { handleTicketInteraction, handleTickets, ticketCommands, isTicketCommand } from './tickets'
 import { handleReactionRoleCommand, handleReactionRoleInteraction, reactionRoleCommands } from './reaction-roles'
+import { handleLogging, handleLoggingInteractionEvents, loggingCommands, emitError } from './logging'
 
 export const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildMessages, GatewayIntentBits.GuildInvites, GatewayIntentBits.GuildVoiceStates] })
 
@@ -18,6 +19,7 @@ client.once(Events.ClientReady, ready => {
   console.log(`[alya] online as ${ready.user.tag}`)
   for (const guild of ready.guilds.cache.values()) void inviteEventHandlers.registerInviteGuild(guild)
   void deliverDueReminders(client)
+  handleLoggingInteractionEvents(client)
   setInterval(() => void deliverDueReminders(client), 30_000)
 })
 client.on(Events.GuildCreate, guild => { void registerGuild(guild.id, guild.name, guild.ownerId); void registerProtectionGuild(guild.id); void inviteEventHandlers.registerInviteGuild(guild) })
@@ -64,6 +66,10 @@ client.on(Events.InteractionCreate, async interaction => {
       if (await handleReactionRoleInteraction(interaction)) return
       await handleTicketInteraction(interaction)
     } catch (error) { console.error('[alya] component interaction failed', error) }
+    return
+  }
+  if (interaction.commandName === loggingCommands.name) {
+    try { await handleLogging(interaction) } catch (error) { console.error('[alya] logging command failed', error); if (interaction.replied || interaction.deferred) await interaction.editReply({ content: 'Alya could not update logging.' }); else await interaction.reply({ content: 'Alya could not update logging.', ephemeral: true }) }
     return
   }
   if (interaction.commandName === reactionRoleCommands.name) {
