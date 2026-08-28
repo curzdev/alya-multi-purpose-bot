@@ -8,6 +8,7 @@ import { reminderCommands } from './reminders'
 import { achievementCommands } from './achievements'
 import { inviteCommands } from './invites'
 import { ticketCommands } from './tickets'
+import { reactionRoleCommands } from './reaction-roles'
 
 const rest = new REST({ version: '10' }).setToken(config.DISCORD_TOKEN)
 
@@ -20,7 +21,7 @@ async function registerCommands() {
     ? Routes.applicationGuildCommands(applicationId, config.DISCORD_TEST_GUILD_ID)
     : Routes.applicationCommands(applicationId)
 
-  const commands = [...moderationCommands, automodCommands, protectionCommands, levelingCommands, rankBackgroundCommands, leaderboardCommands, levelConfigCommands, ...reminderCommands, achievementCommands, ...inviteCommands, ...ticketCommands]
+  const commands = [...moderationCommands, automodCommands, protectionCommands, levelingCommands, rankBackgroundCommands, leaderboardCommands, levelConfigCommands, ...reminderCommands, achievementCommands, ...inviteCommands, ...ticketCommands, reactionRoleCommands]
   await rest.put(route, { body: commands.map(command => command.toJSON()) })
   console.log(`[alya] registered ${commands.length} commands ${config.DISCORD_TEST_GUILD_ID ? 'to test guild' : 'globally'} for application ${applicationId}`)
 }

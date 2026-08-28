@@ -160,6 +160,25 @@ export const tickets = pgTable('alya_tickets', {
   closedAt: timestamp('closed_at', { withTimezone: true }),
 })
 
+export const reactionPanels = pgTable('alya_reaction_panels', {
+  messageId: text('message_id').primaryKey(),
+  guildId: text('guild_id').notNull(),
+  channelId: text('channel_id').notNull(),
+  mode: text('mode').default('normal').notNull(),
+  title: text('title'),
+  description: text('description'),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+})
+
+export const reactionRoles = pgTable('alya_reaction_roles', {
+  messageId: text('message_id').notNull(),
+  roleId: text('role_id').notNull(),
+  emojiIdentifier: text('emoji_identifier').notNull(),
+  position: integer('position').default(0).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+}, (table) => ({ roleKey: primaryKey({ columns: [table.messageId, table.roleId] }) }))
+
 export const auditLogs = pgTable('alya_audit_logs', {
   id: bigint('id', { mode: 'number' }).primaryKey().generatedAlwaysAsIdentity(),
   guildId: text('guild_id').notNull(),
@@ -183,4 +202,4 @@ export type UserAchievement = typeof userAchievements.$inferSelect
 export type Event = typeof events.$inferSelect
 export type EventRsvp = typeof eventRsvps.$inferSelect
 
-export const schema = { guilds, guildSettings, moderationCases, auditLogs, userLevels, guildLevelSettings, achievements, userAchievements, events, eventRsvps, userInvites, inviteCodes, inviteRewards, ticketCategories, tickets }
+export const schema = { guilds, guildSettings, moderationCases, auditLogs, userLevels, guildLevelSettings, achievements, userAchievements, events, eventRsvps, userInvites, inviteCodes, inviteRewards, ticketCategories, tickets, reactionPanels, reactionRoles }

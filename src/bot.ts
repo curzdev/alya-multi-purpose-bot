@@ -8,6 +8,7 @@ import { deliverDueReminders, handleReminder, reminderCommands } from './reminde
 import { achievementCommands, handleAchievements, trackAchievementTrigger } from './achievements'
 import { handleInvites, inviteCommands, inviteEventHandlers } from './invites'
 import { handleTicketInteraction, handleTickets, ticketCommands, isTicketCommand } from './tickets'
+import { handleReactionRoleCommand, handleReactionRoleInteraction, reactionRoleCommands } from './reaction-roles'
 
 export const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildMessages, GatewayIntentBits.GuildInvites] })
 
@@ -30,7 +31,14 @@ client.on(Events.GuildMemberAdd, member => {
 client.on(Events.MessageCreate, message => { void handleAutoModMessage(message); void handleProtectionMessage(message); void handleLevelMessage(message as any) })
 client.on(Events.InteractionCreate, async interaction => {
   if (!interaction.isChatInputCommand()) {
-    try { await handleTicketInteraction(interaction) } catch (error) { console.error('[alya] ticket interaction failed', error) }
+    try {
+      if (await handleReactionRoleInteraction(interaction)) return
+      await handleTicketInteraction(interaction)
+    } catch (error) { console.error('[alya] component interaction failed', error) }
+    return
+  }
+  if (interaction.commandName === reactionRoleCommands.name) {
+    try { await handleReactionRoleCommand(interaction) } catch (error) { console.error('[alya] reaction role command failed', error); if (interaction.replied || interaction.deferred) await interaction.editReply({ content: error instanceof Error ? error.message : 'Alya could not manage reaction roles.' }); else await interaction.reply({ content: error instanceof Error ? error.message : 'Alya could not manage reaction roles.', ephemeral: true }) }
     return
   }
   if (isTicketCommand(interaction.commandName)) {
