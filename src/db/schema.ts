@@ -135,6 +135,16 @@ export const inviteRewards = pgTable('alya_invite_rewards', {
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => ({ rewardKey: primaryKey({ columns: [table.guildId, table.invitesNeeded] }) }))
 
+export const ticketPanels = pgTable('alya_ticket_panels', {
+  messageId: text('message_id').primaryKey(),
+  channelId: text('channel_id').notNull(),
+  guildId: text('guild_id').notNull(),
+  uiStyle: text('ui_style').default('dropdown').notNull(),
+  embedJson: jsonb('embed_json').$type<Record<string, unknown>>().default({}).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+})
+
 export const ticketCategories = pgTable('alya_ticket_categories', {
   id: uuid('id').primaryKey().defaultRandom(),
   guildId: text('guild_id').notNull(),
@@ -144,6 +154,9 @@ export const ticketCategories = pgTable('alya_ticket_categories', {
   supportRoleId: text('support_role_id'),
   parentCategoryId: uuid('parent_category_id'),
   namingFormat: text('naming_format').default('ticket-{number}').notNull(),
+  panelId: text('panel_id'),
+  buttonStyle: text('button_style').default('primary').notNull(),
+  modalQuestions: jsonb('modal_questions').$type<string[]>().default([]).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).defaultNow().notNull(),
 }, (table) => ({ categoryUnique: unique().on(table.guildId, table.name) }))
 

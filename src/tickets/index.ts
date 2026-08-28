@@ -5,120 +5,65 @@ import {
   ChannelType,
   ChatInputCommandInteraction,
   EmbedBuilder,
+  ModalBuilder,
   PermissionFlagsBits,
   StringSelectMenuBuilder,
   TextChannel,
-  User,
+  TextInputBuilder,
+  TextInputStyle,
 } from 'discord.js'
-import { and, desc, eq, isNull } from 'drizzle-orm'
+import { and, desc, eq } from 'drizzle-orm'
 import { db } from '../db'
-import { ticketCategories, tickets } from '../db/schema'
+import { ticketCategories, ticketPanels, tickets } from '../db/schema'
 import { publishDashboardEvent } from '../dashboard/client'
 
-const ticketCommand = {
-  name: 'ticket',
-  description: 'Create and manage private support tickets',
-  options: [
-    { name: 'panel', description: 'Send the ticket creation panel', type: 1, options: [{ name: 'channel', description: 'Channel for the panel', type: 7, required: true, channel_types: [0] }] },
-    { name: 'create', description: 'Create a support ticket', type: 1, options: [{ name: 'reason', description: 'Reason for opening the ticket', type: 3 }] },
-    { name: 'close', description: 'Close the current ticket', type: 1, options: [{ name: 'reason', description: 'Reason for closing', type: 3 }] },
-    { name: 'add', description: 'Add a user to the current ticket', type: 1, options: [{ name: 'user', description: 'User to add', type: 6, required: true }] },
-    { name: 'remove', description: 'Remove a user from the current ticket', type: 1, options: [{ name: 'user', description: 'User to remove', type: 6, required: true }] },
-    { name: 'transcript', description: 'Generate a transcript for the current ticket', type: 1 },
-  ],
-  toJSON() { return this },
-}
+type PanelEmbed = { title?: string; description?: string; color?: number; image?: string; thumbnail?: string }
+type TicketInteraction = any
 
+const sub = (name: string, description: string, options: any[] = []) => ({ name, description, type: 1, options })
+const stringOption = (name: string, description: string, required = false) => ({ name, description, type: 3, required })
+const channelOption = { name: 'channel', description: 'Text channel for the panel', type: 7, required: true, channel_types: [0] }
+const userOption = { name: 'user', description: 'Member to update', type: 6, required: true }
+
+const ticketCommand = {
+  name: 'ticket', description: 'Create and manage private support tickets', options: [
+    sub('panel', 'Create and customize ticket panels', [
+      sub('setup', 'Deploy a new ticket panel', [channelOption]),
+      sub('embed', 'Customize a ticket panel embed', [stringOption('message_id', 'Panel message ID', true), stringOption('title', 'Embed title'), stringOption('description', 'Embed description'), stringOption('color', 'Hex color'), stringOption('image_url', 'Banner image URL'), stringOption('thumbnail', 'Thumbnail URL')]),
+      sub('style', 'Choose buttons or dropdown', [stringOption('message_id', 'Panel message ID', true), { name: 'style', description: 'Panel interaction style', type: 3, required: true, choices: [{ name: 'Buttons', value: 'buttons' }, { name: 'Dropdown', value: 'dropdown' }] }]),
+    ]),
+    sub('category', 'Manage ticket departments', [sub('add', 'Add a category to a panel', [stringOption('panel_id', 'Panel message ID', true), stringOption('name', 'Category name', true), stringOption('emoji', 'Category emoji', true), stringOption('color', 'Button color'), { name: 'staff_role', description: 'Support role', type: 8, required: true }])]),
+    sub('form', 'Configure category modal questions', [sub('set', 'Set popup questions', [stringOption('category', 'Category ID', true), stringOption('question_1', 'First question', true), stringOption('question_2', 'Second question'), stringOption('question_3', 'Third question')])]),
+    sub('create', 'Open a ticket manually', [stringOption('reason', 'Reason for opening')]),
+    sub('close', 'Close the current ticket', [stringOption('reason', 'Reason for closing')]),
+    sub('claim', 'Claim the current ticket'),
+    sub('add', 'Add a member to the current ticket', [userOption]),
+    sub('remove', 'Remove a member from the current ticket', [userOption]),
+    sub('transcript', 'Generate an HTML transcript'),
+  ], toJSON() { return this },
+}
 export const ticketCommands = [ticketCommand]
 
-async function getTicket(channelId: string) {
-  const rows = await db.select().from(tickets).where(and(eq(tickets.channelId, channelId), eq(tickets.status, 'open'))).limit(1)
-  return rows[0]
-}
+async function findTicket(channelId: string) { return (await db.select().from(tickets).where(and(eq(tickets.channelId, channelId), eq(tickets.status, 'open'))).limit(1))[0] }
+async function findPanel(messageId: string) { return (await db.select().from(ticketPanels).where(eq(ticketPanels.messageId, messageId)).limit(1))[0] }
+async function getCategories(guildId: string, panelId?: string) { return db.select().from(ticketCategories).where(panelId ? and(eq(ticketCategories.guildId, guildId), eq(ticketCategories.panelId, panelId)) : eq(ticketCategories.guildId, guildId)).orderBy(desc(ticketCategories.createdAt)) }
+function permission(interaction: ChatInputCommandInteraction) { if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels)) throw new Error('Manage Channels permission required.') }
+function color(input?: string) { if (!input) return 0xdc2626; const value = Number.parseInt(input.replace(/^#/, ''), 16); if (!Number.isFinite(value) || value < 0 || value > 0xffffff) throw new Error('Color must be a valid hex value.'); return value }
+function embedFrom(data: PanelEmbed) { const embed = new EmbedBuilder().setTitle(data.title || 'Need help?').setDescription(data.description || 'Choose a support department below to open a private ticket.').setColor(data.color || 0xdc2626); if (data.image) embed.setImage(data.image); if (data.thumbnail) embed.setThumbnail(data.thumbnail); return embed }
+function escapeHtml(value: string) { return value.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] || c) }
+async function makeTranscript(channel: TextChannel) { const messages = await channel.messages.fetch({ limit: 100 }); const body = [...messages.values()].reverse().map(m => `<article><strong>${escapeHtml(m.author.tag)}</strong> <time>${m.createdAt.toISOString()}</time><p>${escapeHtml(m.content || '[embed/attachment]')}</p></article>`).join(''); return `<!doctype html><meta charset="utf-8"><title>${escapeHtml(channel.name)} transcript</title><style>body{font:14px system-ui;background:#111;color:#eee;max-width:900px;margin:2rem auto}article{padding:1rem 0;border-bottom:1px solid #333}time{color:#999;font-size:12px}p{white-space:pre-wrap}</style><h1>${escapeHtml(channel.name)}</h1>${body}` }
 
-async function categoriesForGuild(guildId: string) {
-  return db.select().from(ticketCategories).where(eq(ticketCategories.guildId, guildId)).orderBy(desc(ticketCategories.createdAt))
-}
+async function panelComponents(guildId: string, panelId: string, style: string) { const categories = await getCategories(guildId, panelId); if (!categories.length) return []; if (style === 'buttons') { const rows: ActionRowBuilder<ButtonBuilder>[] = []; for (let i = 0; i < categories.length && i < 25; i += 5) { const row = new ActionRowBuilder<ButtonBuilder>(); for (const category of categories.slice(i, i + 5)) { const button = new ButtonBuilder().setCustomId(`ticket:category:${category.id}`).setLabel(category.name.slice(0, 80)).setStyle((ButtonStyle as any)[category.buttonStyle?.toUpperCase()] || ButtonStyle.Primary); if (category.emoji) button.setEmoji(category.emoji); row.addComponents(button) } rows.push(row) } return rows } const menu = new StringSelectMenuBuilder().setCustomId(`ticket:category-select:${panelId}`).setPlaceholder('Choose a support department').addOptions(categories.slice(0, 25).map(c => ({ label: c.name, description: c.description.slice(0, 100) || 'Open a private ticket', value: c.id, ...(c.emoji ? { emoji: c.emoji } : {}) }))); return [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu)] }
 
-async function createTicket(interaction: ChatInputCommandInteraction, categoryId?: string) {
-  if (!interaction.guild || !interaction.channel || interaction.channel.type !== ChannelType.GuildText) throw new Error('Tickets can only be opened in a server.')
-  const existing = await getTicketForUser(interaction.guild.id, interaction.user.id)
-  if (existing) throw new Error(`You already have an open ticket: <#${existing.channelId}>`)
-  const category = categoryId ? (await db.select().from(ticketCategories).where(and(eq(ticketCategories.id, categoryId), eq(ticketCategories.guildId, interaction.guild.id))).limit(1))[0] : undefined
-  const number = Date.now().toString().slice(-6)
-  const name = (category?.namingFormat || 'ticket-{number}').replace('{number}', number).toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 90)
-  const channel = await interaction.guild.channels.create({ name, type: ChannelType.GuildText, parent: category?.parentCategoryId || undefined, permissionOverwrites: [
-    { id: interaction.guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] },
-    { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] },
-    { id: interaction.guild.members.me!.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.ManageChannels] },
-    ...(category?.supportRoleId ? [{ id: category.supportRoleId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] }] : []),
-  ] })
-  const [ticket] = await db.insert(tickets).values({ guildId: interaction.guild.id, channelId: channel.id, userId: interaction.user.id, categoryId: category?.id ?? null }).returning()
-  const embed = new EmbedBuilder().setTitle('Support ticket').setDescription(`Opened by <@${interaction.user.id}>${interaction.options.getString('reason') ? `\n\n${interaction.options.getString('reason')}` : ''}`).setColor(0xdc2626)
-  await channel.send({ content: category?.supportRoleId ? `<@&${category.supportRoleId}>` : undefined, embeds: [embed], components: [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(`ticket:claim:${ticket.ticketId}`).setLabel('Claim').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId(`ticket:close:${ticket.ticketId}`).setLabel('Close').setStyle(ButtonStyle.Danger))] })
-  await publishDashboardEvent({ type: 'ticket.created', guildId: interaction.guild.id, actorUserId: interaction.user.id, payload: { ticketId: ticket.ticketId, channelId: channel.id, categoryId: category?.id ?? null } })
-  return channel
-}
+async function createTicket(interaction: any, categoryId?: string, answers: Record<string, string> = {}) { if (!interaction.guild) throw new Error('Tickets can only be opened in a server.'); const existing = (await db.select().from(tickets).where(and(eq(tickets.guildId, interaction.guild.id), eq(tickets.userId, interaction.user.id), eq(tickets.status, 'open'))).limit(1))[0]; if (existing) throw new Error(`You already have an open ticket: <#${existing.channelId}>`); const category = categoryId ? (await db.select().from(ticketCategories).where(and(eq(ticketCategories.id, categoryId), eq(ticketCategories.guildId, interaction.guild.id))).limit(1))[0] : undefined; const number = Date.now().toString().slice(-6); const name = (category?.namingFormat || 'ticket-{number}').replace('{number}', number).toLowerCase().replace(/[^a-z0-9-]/g, '-').slice(0, 90); const channel = await interaction.guild.channels.create({ name, type: ChannelType.GuildText, parent: category?.parentCategoryId || undefined, permissionOverwrites: [{ id: interaction.guild.roles.everyone.id, deny: [PermissionFlagsBits.ViewChannel] }, { id: interaction.user.id, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] }, ...(category?.supportRoleId ? [{ id: category.supportRoleId, allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory] }] : [])] }); const [ticket] = await db.insert(tickets).values({ guildId: interaction.guild.id, channelId: channel.id, userId: interaction.user.id, categoryId: category?.id ?? null }).returning(); const answerText = Object.entries(answers).map(([q, a]) => `**${escapeHtml(q)}**\n${escapeHtml(a)}`).join('\n\n'); await channel.send({ content: category?.supportRoleId ? `<@&${category.supportRoleId}>` : undefined, embeds: [new EmbedBuilder().setTitle(category?.name || 'Support ticket').setDescription(`Opened by <@${interaction.user.id}>${answerText ? `\n\n${answerText}` : ''}`).setColor(0xdc2626)], components: [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder().setCustomId(`ticket:claim:${ticket.ticketId}`).setLabel('Claim').setStyle(ButtonStyle.Primary), new ButtonBuilder().setCustomId(`ticket:close:${ticket.ticketId}`).setLabel('Close').setStyle(ButtonStyle.Danger))] }); await publishDashboardEvent({ type: 'ticket.created', guildId: interaction.guild.id, actorUserId: interaction.user.id, payload: { ticketId: ticket.ticketId, channelId: channel.id, categoryId: category?.id ?? null } }); return channel }
 
-async function getTicketForUser(guildId: string, userId: string) {
-  const rows = await db.select().from(tickets).where(and(eq(tickets.guildId, guildId), eq(tickets.userId, userId), eq(tickets.status, 'open'))).limit(1)
-  return rows[0]
-}
+function questionModal(category: any) { const modal = new ModalBuilder().setCustomId(`ticket:modal:${category.id}`).setTitle(`${category.name} details`.slice(0, 45)); for (const [index, question] of (category.modalQuestions || []).slice(0, 3).entries()) modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(new TextInputBuilder().setCustomId(`question_${index}`).setLabel(question.slice(0, 45)).setStyle(TextInputStyle.Paragraph).setRequired(true))); return modal }
 
-async function transcript(channel: TextChannel) {
-  const messages = await channel.messages.fetch({ limit: 100 })
-  const body = [...messages.values()].reverse().map(message => `<article><strong>${escapeHtml(message.author.tag)}</strong> <time>${message.createdAt.toISOString()}</time><p>${escapeHtml(message.content || '[embed/attachment]')}</p></article>`).join('\n')
-  return `<!doctype html><meta charset="utf-8"><title>${escapeHtml(channel.name)} transcript</title><style>body{font:14px system-ui;background:#111;color:#eee;max-width:900px;margin:2rem auto}article{border-bottom:1px solid #333;padding:1rem 0}time{color:#999;font-size:12px}p{white-space:pre-wrap}</style><h1>${escapeHtml(channel.name)}</h1>${body}`
-}
+export async function handleTickets(interaction: ChatInputCommandInteraction) { if (!interaction.guild) throw new Error('This command can only be used in a server.'); const group = interaction.options.getSubcommandGroup(false); const command = interaction.options.getSubcommand(); if (group === 'panel') { permission(interaction); if (command === 'setup') { const channel = interaction.options.getChannel('channel', true); if (channel.type !== ChannelType.GuildText) throw new Error('Choose a text channel.'); const [panel] = await db.insert(ticketPanels).values({ messageId: 'pending', channelId: channel.id, guildId: interaction.guild.id }).returning(); const sent = await (channel as TextChannel).send({ embeds: [embedFrom({})] }); await db.update(ticketPanels).set({ messageId: sent.id }).where(eq(ticketPanels.messageId, 'pending')); await interaction.reply({ content: `Ticket panel deployed in <#${channel.id}>.`, ephemeral: true }); return } if (command === 'embed') { const messageId = interaction.options.getString('message_id', true); const panel = await findPanel(messageId); if (!panel) throw new Error('Panel not found.'); const data = { ...(panel.embedJson as PanelEmbed), title: interaction.options.getString('title') ?? undefined, description: interaction.options.getString('description') ?? undefined, color: interaction.options.getString('color') ? color(interaction.options.getString('color')!) : undefined, image: interaction.options.getString('image_url') ?? undefined, thumbnail: interaction.options.getString('thumbnail') ?? undefined }; const channel = await interaction.guild.channels.fetch(panel.channelId); const message = channel?.isTextBased() ? await channel.messages.fetch(panel.messageId) : null; if (!message) throw new Error('Panel message not found.'); await message.edit({ embeds: [embedFrom(data)], components: await panelComponents(panel.guildId, panel.messageId, panel.uiStyle) }); await db.update(ticketPanels).set({ embedJson: data, updatedAt: new Date() }).where(eq(ticketPanels.messageId, panel.messageId)); await interaction.reply({ content: 'Panel embed updated.', ephemeral: true }); return } if (command === 'style') { const panel = await findPanel(interaction.options.getString('message_id', true)); if (!panel) throw new Error('Panel not found.'); const style = interaction.options.getString('style', true); await db.update(ticketPanels).set({ uiStyle: style, updatedAt: new Date() }).where(eq(ticketPanels.messageId, panel.messageId)); const channel = await interaction.guild.channels.fetch(panel.channelId); const message = channel?.isTextBased() ? await channel.messages.fetch(panel.messageId) : null; if (message) await message.edit({ components: await panelComponents(panel.guildId, panel.messageId, style) }); await interaction.reply({ content: `Panel style changed to ${style}.`, ephemeral: true }); return } }
+ if (group === 'category' && command === 'add') { permission(interaction); const panel = await findPanel(interaction.options.getString('panel_id', true)); if (!panel) throw new Error('Panel not found.'); const [category] = await db.insert(ticketCategories).values({ guildId: interaction.guild.id, panelId: panel.messageId, name: interaction.options.getString('name', true), emoji: interaction.options.getString('emoji'), supportRoleId: interaction.options.getRole('staff_role', true).id, buttonStyle: 'primary' }).returning(); const channel = await interaction.guild.channels.fetch(panel.channelId); const message = channel?.isTextBased() ? await channel.messages.fetch(panel.messageId) : null; if (message) await message.edit({ components: await panelComponents(panel.guildId, panel.messageId, panel.uiStyle) }); await interaction.reply({ content: `Added ticket category **${category.name}**.`, ephemeral: true }); return }
+ if (group === 'form' && command === 'set') { permission(interaction); const id = interaction.options.getString('category', true); const questions = ['question_1', 'question_2', 'question_3'].map(k => interaction.options.getString(k)).filter(Boolean) as string[]; await db.update(ticketCategories).set({ modalQuestions: questions }).where(and(eq(ticketCategories.id, id), eq(ticketCategories.guildId, interaction.guild.id))); await interaction.reply({ content: 'Ticket form questions saved.', ephemeral: true }); return }
+ if (command === 'create') { const channel = await createTicket(interaction); await interaction.reply({ content: `Your ticket is ready: <#${channel.id}>`, ephemeral: true }); return }
+ if (!interaction.channel || interaction.channel.type !== ChannelType.GuildText) throw new Error('Use this command inside a ticket channel.'); const ticket = await findTicket(interaction.channel.id); if (!ticket) throw new Error('This is not an open Alya ticket.'); if (command === 'claim') { if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels)) throw new Error('Manage Channels permission required.'); if (ticket.claimedBy && ticket.claimedBy !== interaction.user.id) throw new Error('This ticket is already claimed.'); await db.update(tickets).set({ claimedBy: interaction.user.id }).where(eq(tickets.ticketId, ticket.ticketId)); await interaction.reply({ content: `Ticket claimed by <@${interaction.user.id}>.` }); return } if (command === 'add' || command === 'remove') { permission(interaction); const user = interaction.options.getUser('user', true); if (command === 'add') await interaction.channel.permissionOverwrites.create(user.id, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true }); else await interaction.channel.permissionOverwrites.delete(user.id); await interaction.reply({ content: `${command === 'add' ? 'Added' : 'Removed'} <@${user.id}> ${command === 'add' ? 'to' : 'from'} this ticket.` }); return } if (command === 'transcript') { permission(interaction); const html = await makeTranscript(interaction.channel as TextChannel); await interaction.reply({ content: 'Transcript generated.', files: [{ attachment: Buffer.from(html), name: `${interaction.channel.name}.html` }] }); return } if (command === 'close') { if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels) && ticket.userId !== interaction.user.id) throw new Error('Only the owner or staff can close this ticket.'); const html = await makeTranscript(interaction.channel as TextChannel); await db.update(tickets).set({ status: 'closed', closedAt: new Date() }).where(eq(tickets.ticketId, ticket.ticketId)); await interaction.reply({ content: 'Ticket closed. This channel will be deleted in 5 seconds.', files: [{ attachment: Buffer.from(html), name: `${interaction.channel.name}-transcript.html` }] }); setTimeout(() => interaction.channel?.delete().catch(() => undefined), 5000) } }
 
-function escapeHtml(value: string) { return value.replace(/[&<>\"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', "'": '&#39;' })[character] || character) }
-
-export async function handleTickets(interaction: ChatInputCommandInteraction) {
-  if (!interaction.guild) throw new Error('This command can only be used in a server.')
-  const subcommand = interaction.options.getSubcommand()
-  if (subcommand === 'panel') {
-    if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels)) throw new Error('Manage Channels permission required.')
-    const channel = interaction.options.getChannel('channel', true)
-    if (channel.type !== ChannelType.GuildText) throw new Error('Choose a text channel.')
-    const categories = await categoriesForGuild(interaction.guild.id)
-    const select = new StringSelectMenuBuilder().setCustomId('ticket:create').setPlaceholder('Choose a support category').addOptions((categories.length ? categories : [{ id: 'general', name: 'General Support', description: '', emoji: null }]).slice(0, 25).map(category => ({ label: category.name, description: category.description.slice(0, 100) || 'Open a support ticket', value: category.id, ...(category.emoji ? { emoji: category.emoji } : {}) })))
-    await (channel as TextChannel).send({ embeds: [new EmbedBuilder().setTitle('Need help?').setDescription('Select a category below to open a private support ticket.').setColor(0xdc2626)], components: [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select)] })
-    await interaction.reply({ content: `Ticket panel sent to <#${channel.id}>.`, ephemeral: true }); return
-  }
-  if (subcommand === 'create') { const channel = await createTicket(interaction); await interaction.reply({ content: `Your ticket is ready: <#${channel.id}>`, ephemeral: true }); return }
-  if (!interaction.channel || interaction.channel.type !== ChannelType.GuildText) throw new Error('Use this command inside a ticket channel.')
-  const ticket = await getTicket(interaction.channel.id); if (!ticket) throw new Error('This is not an open Alya ticket.')
-  if (subcommand === 'add' || subcommand === 'remove') {
-    if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels)) throw new Error('Manage Channels permission required.')
-    const user = interaction.options.getUser('user', true)
-    if (subcommand === 'add') await interaction.channel.permissionOverwrites.create(user.id, { ViewChannel: true, SendMessages: true, ReadMessageHistory: true })
-    else await interaction.channel.permissionOverwrites.delete(user.id)
-    await interaction.reply({ content: `${subcommand === 'add' ? 'Added' : 'Removed'} <@${user.id}> ${subcommand === 'add' ? 'to' : 'from'} this ticket.` }); return
-  }
-  if (subcommand === 'transcript') {
-    if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels)) throw new Error('Manage Channels permission required.')
-    const html = await transcript(interaction.channel)
-    await interaction.reply({ content: 'Transcript generated.', files: [{ attachment: Buffer.from(html), name: `${interaction.channel.name}.html` }] })
-    await publishDashboardEvent({ type: 'ticket.transcript', guildId: interaction.guild.id, actorUserId: interaction.user.id, payload: { ticketId: ticket.ticketId, channelId: interaction.channel.id, messageCount: (await interaction.channel.messages.fetch({ limit: 100 })).size } })
-    return
-  }
-  if (subcommand === 'close') {
-    if (!interaction.memberPermissions?.has(PermissionFlagsBits.ManageChannels) && ticket.userId !== interaction.user.id) throw new Error('Only the ticket owner or staff can close this ticket.')
-    const html = await transcript(interaction.channel)
-    await db.update(tickets).set({ status: 'closed', closedAt: new Date() }).where(eq(tickets.ticketId, ticket.ticketId))
-    await publishDashboardEvent({ type: 'ticket.closed', guildId: interaction.guild.id, actorUserId: interaction.user.id, payload: { ticketId: ticket.ticketId, channelId: interaction.channel.id, reason: interaction.options.getString('reason') || null, transcriptHtml: html } })
-    await interaction.reply({ content: 'Ticket closed. The transcript is attached before this channel is deleted.', files: [{ attachment: Buffer.from(html), name: `${interaction.channel.name}-transcript.html` }] })
-    setTimeout(() => interaction.channel?.delete().catch(() => undefined), 5000)
-  }
-}
-
-export async function handleTicketInteraction(interaction: any) {
-  if (interaction.isStringSelectMenu() && interaction.customId === 'ticket:create') { await interaction.deferReply({ ephemeral: true }); const channel = await createTicket(interaction, interaction.values[0] === 'general' ? undefined : interaction.values[0]); await interaction.editReply(`Your ticket is ready: <#${channel.id}>`); return true }
-  if (!interaction.isButton() || !interaction.customId.startsWith('ticket:')) return false
-  const [, action] = interaction.customId.split(':'); const ticket = await getTicket(interaction.channelId); if (!ticket) { await interaction.reply({ content: 'This ticket is already closed.', ephemeral: true }); return true }
-  if (action === 'claim') { await db.update(tickets).set({ claimedBy: interaction.user.id }).where(eq(tickets.ticketId, ticket.ticketId)); await interaction.reply({ content: `Ticket claimed by <@${interaction.user.id}>.` }); return true }
-  if (action === 'close') { await db.update(tickets).set({ status: 'closed', closedAt: new Date() }).where(eq(tickets.ticketId, ticket.ticketId)); await interaction.reply({ content: 'Ticket closed.' }); setTimeout(() => interaction.channel?.delete().catch(() => undefined), 3000); return true }
-  return false
-}
-
-export function isTicketCommand(name: string) { return ticketCommands.some(command => command.name === name) }
+export async function handleTicketInteraction(interaction: TicketInteraction) { if (interaction.isStringSelectMenu() && interaction.customId.startsWith('ticket:category-select:')) { const category = (await db.select().from(ticketCategories).where(eq(ticketCategories.id, interaction.values[0])).limit(1))[0]; if (!category) { await interaction.reply({ content: 'That ticket category no longer exists.', ephemeral: true }); return true } if (category.modalQuestions?.length) { await interaction.showModal(questionModal(category)); return true } await interaction.deferReply({ ephemeral: true }); const channel = await createTicket(interaction, category.id); await interaction.editReply(`Your ticket is ready: <#${channel.id}>`); return true } if (interaction.isButton() && interaction.customId.startsWith('ticket:category:')) { const id = interaction.customId.split(':')[2]; const category = (await db.select().from(ticketCategories).where(eq(ticketCategories.id, id)).limit(1))[0]; if (category?.modalQuestions?.length) await interaction.showModal(questionModal(category)); else { await interaction.deferReply({ ephemeral: true }); const channel = await createTicket(interaction, id); await interaction.editReply(`Your ticket is ready: <#${channel.id}>`) } return true } if (interaction.isModalSubmit() && interaction.customId.startsWith('ticket:modal:')) { const id = interaction.customId.split(':')[2]; const category = (await db.select().from(ticketCategories).where(eq(ticketCategories.id, id)).limit(1))[0]; if (!category) throw new Error('Ticket category no longer exists.'); const answers = Object.fromEntries((category.modalQuestions || []).map((q, i) => [q, interaction.fields.getTextInputValue(`question_${i}`)])); await interaction.deferReply({ ephemeral: true }); const channel = await createTicket(interaction, id, answers); await interaction.editReply(`Your ticket is ready: <#${channel.id}>`); return true } if (!interaction.isButton() || !interaction.customId.startsWith('ticket:')) return false; const ticket = await findTicket(interaction.channelId); if (!ticket) { await interaction.reply({ content: 'This ticket is already closed.', ephemeral: true }); return true } const action = interaction.customId.split(':')[1]; if (action === 'claim') { if (ticket.claimedBy && ticket.claimedBy !== interaction.user.id) { await interaction.reply({ content: 'This ticket is already claimed.', ephemeral: true }); return true } await db.update(tickets).set({ claimedBy: interaction.user.id }).where(eq(tickets.ticketId, ticket.ticketId)); await interaction.reply({ content: `Ticket claimed by <@${interaction.user.id}>.` }); return true } if (action === 'close') { const html = await makeTranscript(interaction.channel as TextChannel); await db.update(tickets).set({ status: 'closed', closedAt: new Date() }).where(eq(tickets.ticketId, ticket.ticketId)); await interaction.reply({ content: 'Ticket closed. This channel will be deleted in 5 seconds.', files: [{ attachment: Buffer.from(html), name: `${interaction.channel.name}-transcript.html` }] }); setTimeout(() => interaction.channel?.delete().catch(() => undefined), 5000); return true } return false }
+export function isTicketCommand(name: string) { return ticketCommands.some(c => c.name === name) }
